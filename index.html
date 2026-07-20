@@ -9,6 +9,9 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
+    <!-- 효과음을 합성하기 위한 Tone.js 라이브러리 추가 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; padding: 0; }
@@ -33,7 +36,7 @@
             { id: 1, name: '묵독', duration: 3 },
             { id: 2, name: '읽기·분석', duration: 15 },
             { id: 3, name: '개요 작성', duration: 12 },
-            { id: 4, name: '초안 작성', duration: 20 },
+            { id: 4, name: '답안 작성', duration: 20 },
             { id: 5, name: '퇴고', duration: 10 },
         ];
 
@@ -42,6 +45,9 @@
             const [startTime, setStartTime] = useState('');
             const [currentTime, setCurrentTime] = useState(new Date());
             const [stages, setStages] = useState(DEFAULT_STAGES);
+
+            // 마지막으로 알림음을 울린 단계의 ID를 추적
+            const [lastNotifiedStageId, setLastNotifiedStageId] = useState(null);
 
             // 1초마다 현재 시간 업데이트
             useEffect(() => {
@@ -87,6 +93,46 @@
             };
 
             const calculatedStages = getCalculatedStages();
+
+            // 맑은 종소리 화음 재생 함수
+            const playChime = async () => {
+                if (typeof window.Tone !== 'undefined') {
+                    try {
+                        // 브라우저 오디오 정책에 맞춰 오디오 컨텍스트 강제 시작
+                        await window.Tone.start(); 
+                        const synth = new window.Tone.PolySynth(window.Tone.Synth, {
+                            oscillator: { type: 'sine' },
+                            envelope: { attack: 0.05, decay: 1.5, sustain: 0.1, release: 2 }
+                        }).toDestination();
+                        
+                        synth.volume.value = -8; // 학생들이 놀라지 않게 적절한 볼륨으로 조절
+                        // 영롱한 종소리 느낌의 밝은 C 메이저 화음 (도, 미, 솔, 높은도)
+                        synth.triggerAttackRelease(["C5", "E5", "G5", "C6"], "1s");
+                        
+                        // 사용 후 메모리 누수를 막기 위해 객체 정리
+                        setTimeout(() => synth.dispose(), 3500); 
+                    } catch (error) {
+                        console.log("브라우저 자동 재생 정책으로 인해 소리가 차단되었을 수 있습니다.", error);
+                    }
+                }
+            };
+
+            // 활성화된 단계(상태)가 변경되었을 때 종소리 재생
+            useEffect(() => {
+                const activeStage = calculatedStages.find(stage => stage.isActive);
+                
+                if (activeStage && activeStage.id !== lastNotifiedStageId) {
+                    // 새로운 단계로 진입했을 때 소리 재생 
+                    // (최초 로드 시점 방지 및 시작 시간이 명확히 설정되었을 때만)
+                    if (startTime) {
+                        playChime();
+                    }
+                    setLastNotifiedStageId(activeStage.id);
+                } else if (!activeStage && lastNotifiedStageId) {
+                    // 모든 단계가 종료되었거나 시작 시간이 초기화된 경우
+                    setLastNotifiedStageId(null);
+                }
+            }, [calculatedStages, lastNotifiedStageId, startTime]);
 
             // 소요 시간 변경 핸들러
             const handleDurationChange = (id, newDuration) => {
